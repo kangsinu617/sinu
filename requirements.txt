@@ -13,3 +13,6 @@ soundfile==0.13.1
 requests==2.33.1
 fastapi==0.136.0
 uvicorn==0.45.0
+
+# 테스트
+pytest==8.4.1
