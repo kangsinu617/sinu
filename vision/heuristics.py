@@ -116,6 +116,10 @@ def evaluate_suffocation(
                 visible += 1
     diag["visible_keypoints"] = visible
 
+    assert flipped_min_visible > blanket_max_visible, (
+        f"flipped_min_visible ({flipped_min_visible}) must exceed "
+        f"blanket_max_visible ({blanket_max_visible})"
+    )
     if visible >= flipped_min_visible:
         cause = "flipped"
     elif visible <= blanket_max_visible:

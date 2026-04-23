@@ -151,3 +151,11 @@ def test_suffocation_no_face_partial_keypoints_is_unknown():
     assert active is True
     assert cause == "unknown"
     assert diag["visible_keypoints"] == 2
+
+
+def test_suffocation_face_outside_person_ignored():
+    person = _person_at(0, 0, 100, 200)
+    face = _face_at(200, 200, 240, 240)  # center (220, 220) — outside person
+    active, cause, diag = evaluate_suffocation(person, [face], None, 0.5, 3, 0)
+    assert active is True
+    assert cause == "blanket"
