@@ -82,3 +82,44 @@ def evaluate_climbing(
         diag["block"] = "not_standing"
         return False, diag
     return True, diag
+
+
+def _face_inside_person(face: Face, person: Person) -> bool:
+    fx = (face.bbox[0] + face.bbox[2]) / 2
+    fy = (face.bbox[1] + face.bbox[3]) / 2
+    px1, py1, px2, py2 = person.bbox
+    return px1 <= fx <= px2 and py1 <= fy <= py2
+
+
+def evaluate_suffocation(
+    person: Optional[Person],
+    faces: list[Face],
+    pose: Optional[Pose],
+    keypoint_conf_threshold: float,
+    flipped_min_visible: int,
+    blanket_max_visible: int,
+) -> tuple[bool, Optional[str], dict]:
+    diag: dict = {"person_n": 1 if person else 0, "face_n": len(faces)}
+    if person is None:
+        diag["block"] = "no_person"
+        return False, None, diag
+    matching = [f for f in faces if _face_inside_person(f, person)]
+    diag["face_in_p"] = len(matching)
+    if matching:
+        diag["block"] = "face_detected"
+        return False, None, diag
+
+    visible = 0
+    if pose is not None:
+        for name in ("left_shoulder", "right_shoulder", "left_hip", "right_hip"):
+            if pose.keypoints[name][2] >= keypoint_conf_threshold:
+                visible += 1
+    diag["visible_keypoints"] = visible
+
+    if visible >= flipped_min_visible:
+        cause = "flipped"
+    elif visible <= blanket_max_visible:
+        cause = "blanket"
+    else:
+        cause = "unknown"
+    return True, cause, diag

@@ -95,3 +95,59 @@ def test_climbing_hips_invisible():
     active, diag = evaluate_climbing((15.0, 280.0), pose, CLIMB_ROI, 0.5, 20.0)
     assert active is False
     assert diag["block"] == "shoulder_or_hip_invisible"
+
+
+from vision.face import Face
+from vision.heuristics import evaluate_suffocation
+from vision.person import Person
+
+
+def _person_at(x1, y1, x2, y2):
+    return Person(bbox=(x1, y1, x2, y2), confidence=0.9)
+
+
+def _face_at(x1, y1, x2, y2):
+    return Face(bbox=(x1, y1, x2, y2), confidence=0.9)
+
+
+def test_suffocation_no_person():
+    active, cause, diag = evaluate_suffocation(None, [], None, 0.5, 3, 0)
+    assert active is False
+    assert cause is None
+
+
+def test_suffocation_face_detected_inside_person():
+    person = _person_at(0, 0, 100, 200)
+    face = _face_at(20, 20, 60, 60)
+    active, cause, diag = evaluate_suffocation(person, [face], None, 0.5, 3, 0)
+    assert active is False
+    assert cause is None
+
+
+def test_suffocation_no_face_all_keypoints_visible_is_flipped():
+    person = _person_at(0, 0, 100, 200)
+    active, cause, diag = evaluate_suffocation(person, [], _pose(), 0.5, 3, 0)
+    assert active is True
+    assert cause == "flipped"
+    assert diag["visible_keypoints"] == 4
+
+
+def test_suffocation_no_face_no_pose_is_blanket():
+    person = _person_at(0, 0, 100, 200)
+    active, cause, diag = evaluate_suffocation(person, [], None, 0.5, 3, 0)
+    assert active is True
+    assert cause == "blanket"
+    assert diag["visible_keypoints"] == 0
+
+
+def test_suffocation_no_face_partial_keypoints_is_unknown():
+    person = _person_at(0, 0, 100, 200)
+    # 4개 중 2개만 보임 (left_hip, right_hip 가림)
+    pose = _pose(
+        left_hip=(10.0, 200.0, 0.1),
+        right_hip=(20.0, 200.0, 0.1),
+    )
+    active, cause, diag = evaluate_suffocation(person, [], pose, 0.5, 3, 0)
+    assert active is True
+    assert cause == "unknown"
+    assert diag["visible_keypoints"] == 2
