@@ -79,3 +79,19 @@ def test_climbing_all_conditions_met():
     active, diag = evaluate_climbing((15.0, 280.0), _pose(), CLIMB_ROI, 0.5, 20.0)
     assert active is True
     assert diag["standing_margin"] == 100.0
+
+
+def test_climbing_no_ankle():
+    active, diag = evaluate_climbing(None, _pose(), CLIMB_ROI, 0.5, 20.0)
+    assert active is False
+    assert diag["block"] == "no_ankle"
+
+
+def test_climbing_hips_invisible():
+    pose = _pose(
+        left_hip=(10.0, 200.0, 0.1),
+        right_hip=(20.0, 200.0, 0.1),
+    )
+    active, diag = evaluate_climbing((15.0, 280.0), pose, CLIMB_ROI, 0.5, 20.0)
+    assert active is False
+    assert diag["block"] == "shoulder_or_hip_invisible"
