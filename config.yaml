@@ -2,21 +2,40 @@ camera:
   index: 0
 
 models:
-  person: yolov8n.pt       # COCO person 클래스
+  person: yolov8n.pt
   face:
-    score_threshold: 0.6   # YuNet confidence 하한
+    score_threshold: 0.6
+  pose: yolov8n-pose.pt
 
-heuristics:
-  face_missing:
-    min_duration_s: 5.0    # person은 보이는데 얼굴이 안 보이는 상태 지속 시간
-
-  roi_exit:
-    # 안전 ROI (프레임 픽셀). person 중심이 이 박스를 벗어나면 즉시 알림.
-    # 기본값은 640x480 기준 중앙. 카메라 배치에 맞춰 수정하거나, 실행 중 'r' 키로 재선택.
+rois:
+  safe:
     x1: 80
     y1: 60
     x2: 560
     y2: 420
+  climb_rail:
+    # 침대 난간 상단 좁은 띠. 실행 중 'c' 키로 재선택.
+    x1: 80
+    y1: 40
+    x2: 560
+    y2: 80
+
+heuristics:
+  suffocation:
+    min_duration_s: 5.0
+    keypoint_conf_threshold: 0.5
+    flipped_min_visible: 3     # 4개(양쪽 어깨·엉덩이) 중 N 이상 보이면 flipped
+    blanket_max_visible: 0     # 이 이하면 blanket
+  climbing:
+    min_duration_s: 2.0
+    ankle_conf_threshold: 0.5
+    standing_y_margin: 20      # hip_y - shoulder_y ≥ (px)
+  roi_exit:
+    min_duration_s: 0.0        # 즉시 판정, grace로 튐 완화
+
+stability:
+  grace_s: 0.5
+  ema_alpha: 0.4
 
 dispatcher:
   cooldown_s: 30.0
