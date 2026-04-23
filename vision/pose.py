@@ -30,6 +30,9 @@ class PoseDetector:
             return []
         boxes = res.boxes.xyxy.cpu().numpy()
         kps_all = res.keypoints.data.cpu().numpy()  # (N, 17, 3)
+        assert boxes.shape[0] == kps_all.shape[0], (
+            f"boxes/keypoints count mismatch: {boxes.shape[0]} vs {kps_all.shape[0]}"
+        )
         out: list[Pose] = []
         for b, kps in zip(boxes, kps_all):
             kp_dict = {
