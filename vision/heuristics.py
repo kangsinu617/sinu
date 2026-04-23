@@ -43,3 +43,42 @@ def evaluate_roi_exit(
         diag["block"] = "inside_roi"
         return False, diag
     return True, diag
+
+
+def evaluate_climbing(
+    smoothed_ankle: Optional[tuple[float, float]],
+    pose: Optional[Pose],
+    climb_roi: tuple[int, int, int, int],
+    keypoint_conf_threshold: float,
+    standing_y_margin: float,
+) -> tuple[bool, dict]:
+    diag: dict = {"climb_roi": climb_roi}
+    if pose is None:
+        diag["block"] = "no_pose"
+        return False, diag
+    if smoothed_ankle is None:
+        diag["block"] = "no_ankle"
+        return False, diag
+    ax, ay = smoothed_ankle
+    diag["ankle"] = (round(ax), round(ay))
+    cx1, cy1, cx2, cy2 = climb_roi
+    if not (cx1 <= ax <= cx2 and cy1 <= ay <= cy2):
+        diag["block"] = "ankle_outside_roi"
+        return False, diag
+
+    shoulders = [pose.keypoints[k] for k in ("left_shoulder", "right_shoulder")
+                 if pose.keypoints[k][2] >= keypoint_conf_threshold]
+    hips = [pose.keypoints[k] for k in ("left_hip", "right_hip")
+            if pose.keypoints[k][2] >= keypoint_conf_threshold]
+    if not shoulders or not hips:
+        diag["block"] = "shoulder_or_hip_invisible"
+        return False, diag
+
+    sy = sum(k[1] for k in shoulders) / len(shoulders)
+    hy = sum(k[1] for k in hips) / len(hips)
+    margin = hy - sy
+    diag["standing_margin"] = round(margin, 1)
+    if margin < standing_y_margin:
+        diag["block"] = "not_standing"
+        return False, diag
+    return True, diag
