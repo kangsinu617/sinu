@@ -46,6 +46,9 @@ class AudioClassifier:
                     if "cry" in row["display_name"].lower()
                     or "infant" in row["display_name"].lower()
                 ]
+            if not self._cry_indices:
+                print("[Audio] cry/infant 클래스를 CSV에서 찾지 못함 — 모델 로드 실패")
+                return False
             print(f"[Audio] YAMNet 로드 완료, cry 클래스 {len(self._cry_indices)}개")
             return True
         except Exception as e:
@@ -53,10 +56,15 @@ class AudioClassifier:
             return False
 
     def _process_chunk(self, chunk: np.ndarray) -> None:
-        scores, _, _ = self._model(chunk)          # scores: (N_frames, 521)
-        cry_score = float(
-            np.max(scores.numpy()[:, self._cry_indices])
-        )
+        # TODO: offload to a worker thread — TF inference blocks the PortAudio callback
+        try:
+            scores, _, _ = self._model(chunk)      # scores: (N_frames, 521)
+            cry_score = float(
+                np.max(scores.numpy()[:, self._cry_indices])
+            )
+        except Exception as e:
+            print(f"[Audio] 추론 오류: {e}")
+            return
         mean = self._window_mean(cry_score)
         self._update_state(mean)
 
@@ -77,12 +85,18 @@ class AudioClassifier:
             return False
         if not self._load_model():
             return False
-        self._stream = sd.InputStream(
-            samplerate=self._sr,
-            channels=1,
-            callback=self._audio_callback,
-        )
-        self._stream.start()
+        try:
+            self._stream = sd.InputStream(
+                samplerate=self._sr,
+                channels=1,
+                dtype="float32",
+                callback=self._audio_callback,
+            )
+            self._stream.start()
+        except Exception as e:
+            print(f"[Audio] 스트림 시작 실패: {e}")
+            self._stream = None
+            return False
         print("[Audio] 마이크 스트림 시작")
         return True
 
