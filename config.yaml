@@ -36,3 +36,10 @@ stability:
 
 dispatcher:
   cooldown_s: 30.0
+
+audio:
+  sample_rate: 16000
+  chunk_duration_s: 0.96      # YAMNet 입력 단위 (초)
+  window_chunks: 3             # 슬라이딩 윈도우 크기 (~2.9초)
+  score_threshold: 0.3         # cry_active=True 임계값
+  min_duration_s: 1.0          # cry_tracker 판정까지 최소 지속 시간
