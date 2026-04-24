@@ -7,13 +7,13 @@ class AudioClassifier:
         self._chunk_samples: int = int(self._sr * cfg["chunk_duration_s"])
         self._window_chunks: int = cfg["window_chunks"]
         self._threshold: float = cfg["score_threshold"]
-        self._scores: list[float] = []
+        self._scores: list[float] = []  # audio callback thread only — no lock needed
         self._lock = threading.Lock()
         self._cry_active: bool = False
         self._cry_score: float = 0.0
         self._stream = None
         self._model = None
-        self._cry_indices: list[int] = []
+        self._cry_indices: list[int] = []  # populated by _load_model
 
     def _window_mean(self, score: float) -> float:
         self._scores.append(score)
