@@ -25,7 +25,7 @@ heuristics:
     blanket_max_visible: 0     # 이 이하면 blanket
   climbing:
     min_duration_s: 2.0
-    ankle_conf_threshold: 0.5
+    wrist_conf_threshold: 0.5
     standing_y_margin: 20      # hip_y - shoulder_y ≥ (px)
   roi_exit:
     min_duration_s: 0.0        # 즉시 판정, grace로 튐 완화

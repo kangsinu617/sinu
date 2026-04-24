@@ -46,7 +46,7 @@ def evaluate_roi_exit(
 
 
 def evaluate_climbing(
-    smoothed_ankle: Optional[tuple[float, float]],
+    smoothed_wrist: Optional[tuple[float, float]],
     pose: Optional[Pose],
     climb_rois: list[tuple[int, int, int, int]],
     keypoint_conf_threshold: float,
@@ -59,18 +59,18 @@ def evaluate_climbing(
     if pose is None:
         diag["block"] = "no_pose"
         return False, diag
-    if smoothed_ankle is None:
-        diag["block"] = "no_ankle"
+    if smoothed_wrist is None:
+        diag["block"] = "no_wrist"
         return False, diag
-    ax, ay = smoothed_ankle
-    diag["ankle"] = (round(ax), round(ay))
+    wx, wy = smoothed_wrist
+    diag["wrist"] = (round(wx), round(wy))
     matched = next(
         (i for i, (cx1, cy1, cx2, cy2) in enumerate(climb_rois)
-         if cx1 <= ax <= cx2 and cy1 <= ay <= cy2),
+         if cx1 <= wx <= cx2 and cy1 <= wy <= cy2),
         None,
     )
     if matched is None:
-        diag["block"] = "ankle_outside_roi"
+        diag["block"] = "wrist_outside_roi"
         return False, diag
     diag["matched_roi"] = matched
 

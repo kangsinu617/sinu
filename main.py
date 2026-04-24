@@ -63,15 +63,15 @@ def clamp_roi(roi, w, h):
             max(0, min(x2, w - 1)), max(0, min(y2, h - 1)))
 
 
-def compute_ankle(pose, bbox_bottom_xy, conf_threshold):
+def compute_wrist(pose, conf_threshold):
     if pose is None:
-        return bbox_bottom_xy
-    ankles = [pose.keypoints[k] for k in ("left_ankle", "right_ankle")
+        return None
+    wrists = [pose.keypoints[k] for k in ("left_wrist", "right_wrist")
               if pose.keypoints[k][2] >= conf_threshold]
-    if not ankles:
-        return bbox_bottom_xy
-    cx = sum(a[0] for a in ankles) / len(ankles)
-    cy = sum(a[1] for a in ankles) / len(ankles)
+    if not wrists:
+        return None
+    cx = sum(w[0] for w in wrists) / len(wrists)
+    cy = sum(w[1] for w in wrists) / len(wrists)
     return (cx, cy)
 
 
@@ -145,7 +145,7 @@ def main() -> None:
     ]
 
     center_ema = EMA(stab_cfg["ema_alpha"])
-    ankle_ema = EMA(stab_cfg["ema_alpha"])
+    wrist_ema = EMA(stab_cfg["ema_alpha"])
 
     suf_tracker = DurationTracker(suf_cfg["min_duration_s"], stab_cfg["grace_s"])
     clm_tracker = DurationTracker(clm_cfg["min_duration_s"], stab_cfg["grace_s"])
@@ -175,17 +175,17 @@ def main() -> None:
             main_pose = match_pose_to_person(p, poses) if p else None
 
             center_xy = None
-            ankle_xy = None
+            wrist_xy = None
             if p is not None:
                 cx = (p.bbox[0] + p.bbox[2]) / 2
                 cy = (p.bbox[1] + p.bbox[3]) / 2
                 center_xy = center_ema.update(cx, cy)
-                bbox_bottom = ((p.bbox[0] + p.bbox[2]) / 2, p.bbox[3])
-                ax, ay = compute_ankle(main_pose, bbox_bottom, clm_cfg["ankle_conf_threshold"])
-                ankle_xy = ankle_ema.update(ax, ay)
+                wrist_pos = compute_wrist(main_pose, clm_cfg["wrist_conf_threshold"])
+                if wrist_pos is not None:
+                    wrist_xy = wrist_ema.update(*wrist_pos)
             else:
                 center_ema.reset()
-                ankle_ema.reset()
+                wrist_ema.reset()
 
             suf_active, cause, suf_diag = evaluate_suffocation(
                 p, faces, main_pose,
@@ -194,8 +194,8 @@ def main() -> None:
                 suf_cfg["blanket_max_visible"],
             )
             clm_active, clm_diag = evaluate_climbing(
-                ankle_xy, main_pose, climb_rois,
-                clm_cfg["ankle_conf_threshold"], clm_cfg["standing_y_margin"],
+                wrist_xy, main_pose, climb_rois,
+                clm_cfg["wrist_conf_threshold"], clm_cfg["standing_y_margin"],
             )
             exit_active, exit_diag = evaluate_roi_exit(center_xy, safe_roi)
 
@@ -210,7 +210,7 @@ def main() -> None:
                 active_risks.append(RiskSignal(
                     "climbing_risk",
                     p.confidence if p else 0.0,
-                    {"zone": "crib_rail", "heuristic": "ankle_in_rail_and_standing", **clm_diag},
+                    {"zone": "crib_rail", "heuristic": "wrist_in_rail_and_standing", **clm_diag},
                 ))
             if exit_tracker.update(exit_active, now):
                 active_risks.append(RiskSignal(
@@ -232,7 +232,7 @@ def main() -> None:
                 "cause": cause or "-",
                 "suf_elapsed": f"{suf_tracker.elapsed(now):.1f}s",
                 "clm_elapsed": f"{clm_tracker.elapsed(now):.1f}s",
-                "ankle_ema": tuple(round(x) for x in ankle_xy) if ankle_xy else "-",
+                "wrist_ema": tuple(round(x) for x in wrist_xy) if wrist_xy else "-",
                 "center_ema": tuple(round(x) for x in center_xy) if center_xy else "-",
                 "roi_exit": exit_active,
             }
