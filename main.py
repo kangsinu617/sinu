@@ -25,6 +25,7 @@ from vision.person import PersonDetector
 from vision.pose import KP_NAMES, PoseDetector, match_pose_to_person
 from vision.smoothing import EMA
 from vision.tracker import DurationTracker
+from audio.yamnet_classifier import AudioClassifier
 
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
@@ -138,6 +139,12 @@ def main() -> None:
     exit_cfg = cfg["heuristics"]["roi_exit"]
     stab_cfg = cfg["stability"]
 
+    aud_cfg = cfg["audio"]
+    audio = AudioClassifier(aud_cfg)
+    audio_on = audio.start()
+
+    cry_tracker = DurationTracker(aud_cfg["min_duration_s"], stab_cfg["grace_s"])
+
     safe_roi = (cfg["rois"]["safe"]["x1"], cfg["rois"]["safe"]["y1"],
                 cfg["rois"]["safe"]["x2"], cfg["rois"]["safe"]["y2"])
     climb_rois: list[tuple[int, int, int, int]] = [
@@ -199,6 +206,9 @@ def main() -> None:
             )
             exit_active, exit_diag = evaluate_roi_exit(center_xy, safe_roi)
 
+            cry_raw, cry_score = audio.get_state() if audio_on else (False, 0.0)
+            cry_condition = cry_raw and p is not None
+
             active_risks: list[RiskSignal] = []
             if suf_tracker.update(suf_active, now):
                 active_risks.append(RiskSignal(
@@ -218,6 +228,12 @@ def main() -> None:
                     p.confidence if p else 0.0,
                     {"heuristic": "person_center_outside_roi", **exit_diag},
                 ))
+            if cry_tracker.update(cry_condition, now):
+                active_risks.append(RiskSignal(
+                    "cry_detected",
+                    cry_score,
+                    {"heuristic": "yamnet_cry_and_person_present"},
+                ))
 
             for s in active_risks:
                 if now - last_event_ts.get(s.type, 0) >= cooldown_s:
@@ -235,6 +251,8 @@ def main() -> None:
                 "wrist_ema": tuple(round(x) for x in wrist_xy) if wrist_xy else "-",
                 "center_ema": tuple(round(x) for x in center_xy) if center_xy else "-",
                 "roi_exit": exit_active,
+                "cry_score": f"{cry_score:.2f}" if audio_on else "off",
+                "cry_elapsed": f"{cry_tracker.elapsed(now):.1f}s",
             }
             draw_overlay(frame, persons, faces, main_pose, safe_roi, climb_rois,
                          active_risks, debug, suf_cfg["keypoint_conf_threshold"])
@@ -259,6 +277,8 @@ def main() -> None:
                 climb_rois.clear()
                 print("[ROI] climb_rail 전체 초기화")
     finally:
+        if audio_on:
+            audio.stop()
         cam.release()
         cv2.destroyAllWindows()
 
