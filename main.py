@@ -277,8 +277,7 @@ def main() -> None:
                 climb_rois.clear()
                 print("[ROI] climb_rail 전체 초기화")
     finally:
-        if audio_on:
-            audio.stop()
+        audio.stop()
         cam.release()
         cv2.destroyAllWindows()
 
