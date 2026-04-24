@@ -29,7 +29,8 @@ python main.py
 - 키
   - `q` 종료
   - `r` safe_roi 재선택
-  - `c` climb_rail 재선택
+  - `c` climb_rail ROI 추가 (최대 4개, 화면에 rail0~rail3 표시)
+  - `x` climb_rail ROI 전체 초기화
 
 ## 위험 판정 규칙 (v1)
 
@@ -37,7 +38,7 @@ python main.py
    - 어깨·엉덩이 4개 중 3개 이상 보임 → `flipped` (뒤집힘)
    - 전부 안 보임 → `blanket` (이불덮힘)
    - 그 중간 → `unknown`
-2. **climbing_risk**: pose ankle이 난간 ROI(`climb_rail`) 내부이면서 서있음 자세(hip_y − shoulder_y ≥ margin) 지속 → 침대 프레임 등반
+2. **climbing_risk**: pose ankle이 난간 ROI(`climb_rails`, 최대 4개 중 하나) 내부이면서 서있음 자세(hip_y − shoulder_y ≥ margin) 지속 → 침대 프레임 등반
 3. **roi_exit_risk**: person 중심이 안전 ROI(`safe`) 밖 (낙상·이탈 일반)
 
 판정은 지수이동평균으로 스무딩된 좌표 + `DurationTracker` grace로 프레임 단위 튐을 완화. 동일 타입 이벤트는 `dispatcher.cooldown_s`(30초) 동안 재 dispatch 안 됨.

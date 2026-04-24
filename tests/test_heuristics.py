@@ -38,17 +38,23 @@ def _pose(**overrides):
     return Pose(bbox=(0, 0, 100, 400), keypoints=base)
 
 
-CLIMB_ROI = (0, 250, 100, 320)
+CLIMB_ROIS = [(0, 250, 100, 320)]
+
+
+def test_climbing_empty_rois():
+    active, diag = evaluate_climbing((15.0, 280.0), _pose(), [], 0.5, 20.0)
+    assert active is False
+    assert diag["block"] == "no_climb_roi"
 
 
 def test_climbing_pose_none():
-    active, diag = evaluate_climbing(None, None, CLIMB_ROI, 0.5, 20.0)
+    active, diag = evaluate_climbing(None, None, CLIMB_ROIS, 0.5, 20.0)
     assert active is False
     assert diag["block"] == "no_pose"
 
 
 def test_climbing_ankle_outside_roi():
-    active, diag = evaluate_climbing((500.0, 500.0), _pose(), CLIMB_ROI, 0.5, 20.0)
+    active, diag = evaluate_climbing((500.0, 500.0), _pose(), CLIMB_ROIS, 0.5, 20.0)
     assert active is False
     assert diag["block"] == "ankle_outside_roi"
 
@@ -58,7 +64,7 @@ def test_climbing_shoulders_invisible():
         left_shoulder=(10.0, 100.0, 0.1),
         right_shoulder=(20.0, 100.0, 0.1),
     )
-    active, diag = evaluate_climbing((15.0, 280.0), pose, CLIMB_ROI, 0.5, 20.0)
+    active, diag = evaluate_climbing((15.0, 280.0), pose, CLIMB_ROIS, 0.5, 20.0)
     assert active is False
     assert diag["block"] == "shoulder_or_hip_invisible"
 
@@ -69,20 +75,21 @@ def test_climbing_margin_too_small():
         left_shoulder=(10.0, 180.0, 0.9), right_shoulder=(20.0, 180.0, 0.9),
         left_hip=(10.0, 190.0, 0.9), right_hip=(20.0, 190.0, 0.9),
     )
-    active, diag = evaluate_climbing((15.0, 280.0), pose, CLIMB_ROI, 0.5, 20.0)
+    active, diag = evaluate_climbing((15.0, 280.0), pose, CLIMB_ROIS, 0.5, 20.0)
     assert active is False
     assert diag["block"] == "not_standing"
 
 
 def test_climbing_all_conditions_met():
     # shoulder y = 100, hip y = 200 → margin 100 ≥ 20, ankle 안쪽
-    active, diag = evaluate_climbing((15.0, 280.0), _pose(), CLIMB_ROI, 0.5, 20.0)
+    active, diag = evaluate_climbing((15.0, 280.0), _pose(), CLIMB_ROIS, 0.5, 20.0)
     assert active is True
     assert diag["standing_margin"] == 100.0
+    assert diag["matched_roi"] == 0
 
 
 def test_climbing_no_ankle():
-    active, diag = evaluate_climbing(None, _pose(), CLIMB_ROI, 0.5, 20.0)
+    active, diag = evaluate_climbing(None, _pose(), CLIMB_ROIS, 0.5, 20.0)
     assert active is False
     assert diag["block"] == "no_ankle"
 
@@ -92,9 +99,17 @@ def test_climbing_hips_invisible():
         left_hip=(10.0, 200.0, 0.1),
         right_hip=(20.0, 200.0, 0.1),
     )
-    active, diag = evaluate_climbing((15.0, 280.0), pose, CLIMB_ROI, 0.5, 20.0)
+    active, diag = evaluate_climbing((15.0, 280.0), pose, CLIMB_ROIS, 0.5, 20.0)
     assert active is False
     assert diag["block"] == "shoulder_or_hip_invisible"
+
+
+def test_climbing_ankle_in_second_roi():
+    # 두 번째 ROI에서 발 감지 → matched_roi == 1
+    rois = [(0, 0, 10, 10), (200, 250, 300, 320)]
+    active, diag = evaluate_climbing((250.0, 280.0), _pose(), rois, 0.5, 20.0)
+    assert active is True
+    assert diag["matched_roi"] == 1
 
 
 from vision.face import Face

@@ -4,7 +4,8 @@
 키:
   q  종료
   r  safe_roi 재선택
-  c  climb_rail 재선택
+  c  climb_rail ROI 추가 (최대 4개)
+  x  climb_rail ROI 전체 초기화
 """
 from pathlib import Path
 from time import time
@@ -89,13 +90,14 @@ def draw_pose(frame, pose, conf_threshold):
             cv2.line(frame, (int(xa), int(ya)), (int(xb), int(yb)), (255, 0, 0), 1)
 
 
-def draw_overlay(frame, persons, faces, main_pose, safe_roi, climb_roi, active_risks, debug, kp_conf):
+def draw_overlay(frame, persons, faces, main_pose, safe_roi, climb_rois, active_risks, debug, kp_conf):
     cv2.rectangle(frame, (safe_roi[0], safe_roi[1]), (safe_roi[2], safe_roi[3]), (100, 100, 255), 1)
     cv2.putText(frame, "safe", (safe_roi[0] + 4, safe_roi[1] + 14),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 255), 1)
-    cv2.rectangle(frame, (climb_roi[0], climb_roi[1]), (climb_roi[2], climb_roi[3]), (0, 150, 255), 1)
-    cv2.putText(frame, "climb_rail", (climb_roi[0] + 4, climb_roi[1] + 14),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 150, 255), 1)
+    for i, roi in enumerate(climb_rois):
+        cv2.rectangle(frame, (roi[0], roi[1]), (roi[2], roi[3]), (0, 150, 255), 1)
+        cv2.putText(frame, f"rail{i}", (roi[0] + 4, roi[1] + 14),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 150, 255), 1)
     for p in persons:
         x1, y1, x2, y2 = map(int, p.bbox)
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -138,8 +140,9 @@ def main() -> None:
 
     safe_roi = (cfg["rois"]["safe"]["x1"], cfg["rois"]["safe"]["y1"],
                 cfg["rois"]["safe"]["x2"], cfg["rois"]["safe"]["y2"])
-    climb_roi = (cfg["rois"]["climb_rail"]["x1"], cfg["rois"]["climb_rail"]["y1"],
-                 cfg["rois"]["climb_rail"]["x2"], cfg["rois"]["climb_rail"]["y2"])
+    climb_rois: list[tuple[int, int, int, int]] = [
+        (r["x1"], r["y1"], r["x2"], r["y2"]) for r in cfg["rois"]["climb_rails"]
+    ]
 
     center_ema = EMA(stab_cfg["ema_alpha"])
     ankle_ema = EMA(stab_cfg["ema_alpha"])
@@ -161,7 +164,7 @@ def main() -> None:
             h, w = frame.shape[:2]
             if not clamped_once:
                 safe_roi = clamp_roi(safe_roi, w, h)
-                climb_roi = clamp_roi(climb_roi, w, h)
+                climb_rois = [clamp_roi(r, w, h) for r in climb_rois]
                 clamped_once = True
             now = time()
 
@@ -191,7 +194,7 @@ def main() -> None:
                 suf_cfg["blanket_max_visible"],
             )
             clm_active, clm_diag = evaluate_climbing(
-                ankle_xy, main_pose, climb_roi,
+                ankle_xy, main_pose, climb_rois,
                 clm_cfg["ankle_conf_threshold"], clm_cfg["standing_y_margin"],
             )
             exit_active, exit_diag = evaluate_roi_exit(center_xy, safe_roi)
@@ -233,7 +236,7 @@ def main() -> None:
                 "center_ema": tuple(round(x) for x in center_xy) if center_xy else "-",
                 "roi_exit": exit_active,
             }
-            draw_overlay(frame, persons, faces, main_pose, safe_roi, climb_roi,
+            draw_overlay(frame, persons, faces, main_pose, safe_roi, climb_rois,
                          active_risks, debug, suf_cfg["keypoint_conf_threshold"])
             cv2.imshow(window, frame)
             key = cv2.waitKey(1) & 0xFF
@@ -245,10 +248,16 @@ def main() -> None:
                     safe_roi = clamp_roi(new_roi, w, h)
                     print(f"[ROI] safe 업데이트: {safe_roi}")
             if key == ord("c"):
-                new_roi = select_roi_interactive(window, frame)
-                if new_roi is not None:
-                    climb_roi = clamp_roi(new_roi, w, h)
-                    print(f"[ROI] climb_rail 업데이트: {climb_roi}")
+                if len(climb_rois) >= 4:
+                    print("[ROI] 최대 4개. x키로 전체 초기화 후 재추가 가능")
+                else:
+                    new_roi = select_roi_interactive(window, frame)
+                    if new_roi is not None:
+                        climb_rois.append(clamp_roi(new_roi, w, h))
+                        print(f"[ROI] climb_rail 추가 ({len(climb_rois)}개): {climb_rois[-1]}")
+            if key == ord("x"):
+                climb_rois.clear()
+                print("[ROI] climb_rail 전체 초기화")
     finally:
         cam.release()
         cv2.destroyAllWindows()
