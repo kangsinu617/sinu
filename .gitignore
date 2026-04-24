@@ -5,3 +5,5 @@ __pycache__/
 *.onnx
 tests/samples/
 events_queue.jsonl
+docs/superpowers/
+v0/
