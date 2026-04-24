@@ -31,6 +31,8 @@ python main.py
   - `r` safe_roi 재선택
   - `c` climb_rail ROI 추가 (최대 4개, 화면에 rail0~rail3 표시)
   - `x` climb_rail ROI 전체 초기화
+- HUD에 `cry_score` (off = 마이크 없음), `cry_elapsed` 표시
+- 첫 실행 시 YAMNet 모델 자동 다운로드 (~200MB, TFHub 캐시)
 
 ## 위험 판정 규칙 (v1)
 
@@ -47,8 +49,8 @@ python main.py
 
 - [x] Week 1: 웹캠 + YOLOv8n 렌더 루프 (2026-04-23 확인)
 - [x] Week 2 재구성: 얼굴 미탐 + ROI 이탈 2규칙 (v0)
-- [x] Week 2 v1: pose + cause 분기 + 판정 안정화 (실행 확인 필요)
-- [x] Week 3: YAMNet 음성 분류 + person AND 조건 (v2)
+- [x] Week 2 v1: pose + cause 분기 + 판정 안정화
+- [x] Week 3: YAMNet 울음 감지 + person AND 조건 (v2)
 - [ ] Week 4: 이벤트 디스패처 + REST 연동
 - [ ] Week 5: 통합 테스트·튜닝
 - [ ] Week 6: 데모 준비
