@@ -1,5 +1,5 @@
 camera:
-  index: 0
+  index: 2
 
 models:
   person: yolov8n.pt
@@ -7,28 +7,41 @@ models:
     score_threshold: 0.6
   pose: yolov8n-pose.pt
 
-rois:
-  safe:
-    x1: 80
-    y1: 60
-    x2: 560
-    y2: 420
-  climb_rails:
-    # 침대 난간 띠. 실행 중 'c' 키로 추가(최대 4개), 'x' 키로 전체 초기화.
-    - {x1: 80, y1: 40, x2: 560, y2: 80}
+auto_roi:
+  enabled: true
+  detector: manual           # manual | aruco | contour
+  init_frames: 30            # (aruco/contour) 시작 시 캡처할 프레임 수
+  rail_band_px: 40           # 난간 판정 거리 (px): 손목이 변에 이만큼 가까우면 매달림
+  # 검출 실패 시 폴백 폴리곤 [TL,TR,BR,BL]
+  fallback_polygon: [[80, 60], [560, 60], [560, 420], [80, 420]]
+  aruco:
+    dict: DICT_4X4_50        # 마커 사전 (ID 0~3 사용)
+  contour:
+    canny_low: 50
+    canny_high: 150
+    min_area_ratio: 0.05     # 프레임 면적 대비 최소 4각형 크기
+    approx_eps_ratio: 0.05   # approxPolyDP 정밀도 (입체 박스 외곽을 4각형으로 단순화하려면 거칠게)
 
 heuristics:
   suffocation:
     min_duration_s: 5.0
-    keypoint_conf_threshold: 0.5
-    flipped_min_visible: 3     # 4개(양쪽 어깨·엉덩이) 중 N 이상 보이면 flipped
-    blanket_max_visible: 0     # 이 이하면 blanket
+    face_memory_s: 30.0        # 최근 이 초 안에 face가 보인 적 있으면 소실 추적
+    flipped_edge_threshold: 0.044  # 얼굴 없을 때 subject 엣지밀도(회색조,색무관) ≥ 이 값=flipped(엎드림,구조 노출), 미만/소실=face_covered(매끈한 천)
+    out_of_view_roi_threshold: 0.72  # flipped 후보라도 subject bbox의 ROI 포함율 < 이 값이면 카메라 밖(발만 보임 등)=out_of_view(위험 아님). 엎드림 정탐 0.88 vs 엣지케이스 0.68 사이
+    face_kp_conf_threshold: 0.5  # pose 얼굴 키포인트(코·눈·귀)를 "보임"으로 칠 최소 conf
+    face_kp_min_visible: 4       # 얼굴 키포인트 이만큼 보이면 face_visible로 간주(YuNet 실패해도). 정상 누움 5/5 vs 엎드림 1/5 사이
   climbing:
     min_duration_s: 2.0
     wrist_conf_threshold: 0.5
     standing_y_margin: 20      # hip_y - shoulder_y ≥ (px)
   roi_exit:
     min_duration_s: 0.0        # 즉시 판정, grace로 튐 완화
+  fall:
+    window_s: 1.5              # 이 시간 동안의 순 하강 거리를 본다 (단일 프레임 속도 X)
+    min_drop_px: 80            # 윈도우 내 하강이 이만큼(px) 이상이면 낙상 (실측 낙하 ~106px)
+    climb_window_s: 2.0        # climbing 활성 후 이 시간 동안 하강·자세붕괴 감시
+    climb_drop_px: 20          # climbing 기준 높이 대비 이만큼 하강하면 낙상 (경로 1)
+    climb_fall_aspect: 1.1     # climbing 직후 person bbox 가로/세로 비가 이 이상이면 누움=낙상 (경로 2)
 
 stability:
   grace_s: 0.5
@@ -37,9 +50,17 @@ stability:
 dispatcher:
   cooldown_s: 30.0
 
+mqtt:
+  host: localhost
+  port: 1883
+  topic: capstone/safety_event
+  device_serial: DEV-001
+
 audio:
   sample_rate: 16000
-  chunk_duration_s: 0.96      # YAMNet 입력 단위 (초)
-  window_chunks: 3             # 슬라이딩 윈도우 크기 (~2.9초)
-  score_threshold: 0.3         # cry_active=True 임계값
-  min_duration_s: 1.0          # cry_tracker 판정까지 최소 지속 시간
+  chunk_duration_s: 0.96          # YAMNet 입력 단위 (초)
+  window_chunks: 3                 # 슬라이딩 윈도우 크기 (~2.9초)
+  score_threshold: 0.3             # cry_active=True 임계값
+  min_duration_s: 1.0              # cry_tracker 판정까지 최소 지속 시간
+  whimper_score_threshold: 0.25    # whimper_active=True 임계값 (cry보다 낮게)
+  whimper_min_duration_s: 2.0     # whimper_tracker 판정까지 최소 지속 시간

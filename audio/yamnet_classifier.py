@@ -9,29 +9,36 @@ class AudioClassifier:
         self._chunk_samples: int = int(self._sr * cfg["chunk_duration_s"])
         self._window_chunks: int = cfg["window_chunks"]
         self._threshold: float = cfg["score_threshold"]
-        self._scores: list[float] = []  # audio callback thread only — no lock needed
+        self._whimper_threshold: float = cfg["whimper_score_threshold"]
+        self._scores: list[float] = []           # audio callback thread only — no lock needed
+        self._whimper_scores: list[float] = []  # audio callback thread only — no lock needed
         self._buf: np.ndarray = np.zeros(0, dtype=np.float32)
         self._lock = threading.Lock()
         self._cry_active: bool = False
         self._cry_score: float = 0.0
+        self._whimper_active: bool = False
+        self._whimper_score: float = 0.0
         self._stream = None
         self._model = None
-        self._cry_indices: list[int] = []  # populated by _load_model
+        self._cry_indices: list[int] = []      # populated by _load_model
+        self._whimper_indices: list[int] = []  # populated by _load_model
 
-    def _window_mean(self, score: float) -> float:
-        self._scores.append(score)
-        if len(self._scores) > self._window_chunks:
-            self._scores.pop(0)
-        return sum(self._scores) / len(self._scores)
+    def _window_mean(self, scores: list[float], score: float) -> float:
+        scores.append(score)
+        if len(scores) > self._window_chunks:
+            scores.pop(0)
+        return sum(scores) / len(scores)
 
-    def _update_state(self, mean: float) -> None:
+    def _update_state(self, cry_mean: float, whimper_mean: float) -> None:
         with self._lock:
-            self._cry_active = mean >= self._threshold
-            self._cry_score = mean
+            self._cry_active = cry_mean >= self._threshold
+            self._cry_score = cry_mean
+            self._whimper_active = whimper_mean >= self._whimper_threshold
+            self._whimper_score = whimper_mean
 
-    def get_state(self) -> tuple[bool, float]:
+    def get_state(self) -> tuple[bool, float, bool, float]:
         with self._lock:
-            return self._cry_active, self._cry_score
+            return self._cry_active, self._cry_score, self._whimper_active, self._whimper_score
 
     def _load_model(self) -> bool:
         try:
@@ -41,15 +48,20 @@ class AudioClassifier:
             class_map_path = self._model.class_map_path().numpy().decode()
             with open(class_map_path) as f:
                 reader = csv.DictReader(f)
+                rows = list(reader)
                 self._cry_indices = [
-                    int(row["index"]) for row in reader
+                    int(row["index"]) for row in rows
                     if "cry" in row["display_name"].lower()
                     or "infant" in row["display_name"].lower()
+                ]
+                self._whimper_indices = [
+                    int(row["index"]) for row in rows
+                    if "babbl" in row["display_name"].lower()
                 ]
             if not self._cry_indices:
                 print("[Audio] cry/infant 클래스를 CSV에서 찾지 못함 — 모델 로드 실패")
                 return False
-            print(f"[Audio] YAMNet 로드 완료, cry 클래스 {len(self._cry_indices)}개")
+            print(f"[Audio] YAMNet 로드 완료, cry {len(self._cry_indices)}개 / whimper {len(self._whimper_indices)}개")
             return True
         except Exception as e:
             print(f"[Audio] 모델 로드 실패: {e}")
@@ -59,14 +71,18 @@ class AudioClassifier:
         # TODO: offload to a worker thread — TF inference blocks the PortAudio callback
         try:
             scores, _, _ = self._model(chunk)      # scores: (N_frames, 521)
-            cry_score = float(
-                np.max(scores.numpy()[:, self._cry_indices])
+            arr = scores.numpy()
+            cry_score = float(np.max(arr[:, self._cry_indices]))
+            whimper_score = (
+                float(np.max(arr[:, self._whimper_indices]))
+                if self._whimper_indices else 0.0
             )
         except Exception as e:
             print(f"[Audio] 추론 오류: {e}")
             return
-        mean = self._window_mean(cry_score)
-        self._update_state(mean)
+        cry_mean = self._window_mean(self._scores, cry_score)
+        whimper_mean = self._window_mean(self._whimper_scores, whimper_score)
+        self._update_state(cry_mean, whimper_mean)
 
     def _audio_callback(self, indata, frames, time_info, status) -> None:
         mono = indata[:, 0].astype(np.float32)

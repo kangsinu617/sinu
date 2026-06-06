@@ -1,3 +1,6 @@
+# x86 개발용 (CPU 또는 일반 CUDA). torch는 ultralytics가 끌어온다.
+# Jetson(Orin Nano/JetPack 6)에서 GPU로 돌리려면 torch GPU 휠을 먼저 깔아야 한다 → README "Jetson 설치" 참고.
+
 # Week 1~2 필수
 ultralytics==8.4.41
 opencv-python==4.13.0.92
@@ -13,6 +16,7 @@ soundfile==0.13.1
 requests==2.33.1
 fastapi==0.136.0
 uvicorn==0.45.0
+paho-mqtt==2.1.0
 
 # 테스트
 pytest==8.4.1
