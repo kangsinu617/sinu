@@ -14,6 +14,7 @@ EVENT_TYPE_MAP: dict = {
     "fall_risk": "FALL",
     "roi_exit_risk": "ROI_EXIT",
     "cry_detected": "CRYING",
+    "babble_detected": "WHINING",
 }
 
 SUFFOCATION_CAUSE_MAP: dict = {
@@ -28,6 +29,7 @@ SEVERITY_MAP: dict = {
     "CLIMBING": "CAUTION",
     "CRYING": "CAUTION",
     "ROI_EXIT": "CAUTION",
+    "WHINING": "INFO",
 }
 
 

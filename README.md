@@ -70,6 +70,7 @@ python main.py
 | 이벤트 | YAMNet 클래스 | score 임계값 | 지속 시간 |
 |---|---|---|---|
 | `cry_detected` | Baby cry, Crying | 0.3 | 1초 |
+| `babble_detected` | Babbling | 0.25 | 2초 |
 
 - **person이 화면에 있을 때만** 판정
 
@@ -83,6 +84,7 @@ python main.py
 | `climbing_risk` | `CLIMBING` | CAUTION |
 | `roi_exit_risk` | `ROI_EXIT` | CAUTION |
 | `cry_detected` | `CRYING` | CAUTION |
+| `babble_detected` | `WHINING` | INFO |
 
 - 위험 시작/종료를 각각 publish (`phase`: START / END), payload에 `duration_s`·`startedAt`·`endedAt` 포함
 - 토픽·디바이스 시리얼은 `config.yaml`의 `mqtt` 섹션에서 설정

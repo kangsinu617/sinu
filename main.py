@@ -262,6 +262,7 @@ def main() -> None:
     device_serial = mqtt_cfg["device_serial"]
 
     cry_tracker = DurationTracker(aud_cfg["min_duration_s"], stab_cfg["grace_s"])
+    whimper_tracker = DurationTracker(aud_cfg["whimper_min_duration_s"], stab_cfg["grace_s"])
 
     window = "infant-safety-v1"
     safe_polygon = setup_roi(cam, cfg, window)
@@ -420,14 +421,18 @@ def main() -> None:
                 fall_diag.pop("block", None)
                 fall_diag["climb_aspect"] = round(aspect, 2)
 
-            cry_raw, cry_score = audio.get_state() if audio_on else (False, 0.0)
+            cry_raw, cry_score, whimper_raw, whimper_score = (
+                audio.get_state() if audio_on else (False, 0.0, False, 0.0)
+            )
             cry_condition = cry_raw and p is not None
+            whimper_condition = whimper_raw and p is not None
 
             suf_triggered = suf_tracker.update(suf_active, now)
             clm_triggered = clm_tracker.update(clm_active, now)
             exit_triggered = exit_tracker.update(exit_active, now)
             fall_triggered = fall_tracker.update(fall_active, now)
             cry_triggered = cry_tracker.update(cry_condition, now)
+            whimper_triggered = whimper_tracker.update(whimper_condition, now)
 
             p_conf = p.confidence if p else 0.0
             # face_covered(몸 전체 덮임)는 person이 없어 검출 conf가 없음 → 고정값
@@ -445,6 +450,8 @@ def main() -> None:
                  {"heuristic": "rapid_y_descent", **fall_diag}),
                 ("cry_detected", cry_triggered, cry_score,
                  {"heuristic": "yamnet_cry_and_person_present"}),
+                ("babble_detected", whimper_triggered, whimper_score,
+                 {"heuristic": "yamnet_babble_and_person_present"}),
             ]
 
             active_risks: list[RiskSignal] = []

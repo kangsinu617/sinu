@@ -49,6 +49,12 @@ def test_cry_maps_to_caution():
     assert payload["severity"] == "CAUTION"
 
 
+def test_babble_maps_to_info():
+    payload = build_payload(_signal("babble_detected"), "DEV-001")
+    assert payload["eventType"] == "WHINING"
+    assert payload["severity"] == "INFO"
+
+
 def test_unknown_event_returns_none():
     payload = build_payload(_signal("scream_detected"), "DEV-001")
     assert payload is None
