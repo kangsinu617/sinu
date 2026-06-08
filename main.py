@@ -106,26 +106,6 @@ def motion_level(prev_gray, gray, bbox):
     return float(cv2.absdiff(gray[y1:y2, x1:x2], prev_gray[y1:y2, x1:x2]).mean()) / 255.0
 
 
-def torso_kp_conf(pose):
-    """HUD 표시용 몸통 키포인트 conf (L_sh, R_sh, L_hp, R_hp). pose 없으면 0.
-
-    flipped 판정이 pose_torso_visible(어깨·엉덩이 가시성)로 동작하므로,
-    임계 튜닝·디버깅을 위해 실제 conf 값을 그대로 띄운다.
-    """
-    if pose is None:
-        return (0.0, 0.0, 0.0, 0.0)
-    kp = pose.keypoints
-    return tuple(kp[n][2] for n in ("left_shoulder", "right_shoulder", "left_hip", "right_hip"))
-
-
-def face_kp_conf(pose):
-    """HUD 진단용 얼굴 키포인트 conf (nose, L_eye, R_eye). pose 없으면 0."""
-    if pose is None:
-        return (0.0, 0.0, 0.0)
-    kp = pose.keypoints
-    return tuple(kp[n][2] for n in ("nose", "left_eye", "right_eye"))
-
-
 def draw_pose(frame, pose, conf_threshold):
     if pose is None:
         return
@@ -282,7 +262,6 @@ def main() -> None:
     device_serial = mqtt_cfg["device_serial"]
 
     cry_tracker = DurationTracker(aud_cfg["min_duration_s"], stab_cfg["grace_s"])
-    whimper_tracker = DurationTracker(aud_cfg["whimper_min_duration_s"], stab_cfg["grace_s"])
 
     window = "infant-safety-v1"
     safe_polygon = setup_roi(cam, cfg, window)
@@ -441,18 +420,14 @@ def main() -> None:
                 fall_diag.pop("block", None)
                 fall_diag["climb_aspect"] = round(aspect, 2)
 
-            cry_raw, cry_score, whimper_raw, whimper_score = (
-                audio.get_state() if audio_on else (False, 0.0, False, 0.0)
-            )
+            cry_raw, cry_score = audio.get_state() if audio_on else (False, 0.0)
             cry_condition = cry_raw and p is not None
-            whimper_condition = whimper_raw and p is not None
 
             suf_triggered = suf_tracker.update(suf_active, now)
             clm_triggered = clm_tracker.update(clm_active, now)
             exit_triggered = exit_tracker.update(exit_active, now)
             fall_triggered = fall_tracker.update(fall_active, now)
             cry_triggered = cry_tracker.update(cry_condition, now)
-            whimper_triggered = whimper_tracker.update(whimper_condition, now)
 
             p_conf = p.confidence if p else 0.0
             # face_covered(몸 전체 덮임)는 person이 없어 검출 conf가 없음 → 고정값
@@ -470,8 +445,6 @@ def main() -> None:
                  {"heuristic": "rapid_y_descent", **fall_diag}),
                 ("cry_detected", cry_triggered, cry_score,
                  {"heuristic": "yamnet_cry_and_person_present"}),
-                ("babble_detected", whimper_triggered, whimper_score,
-                 {"heuristic": "yamnet_babbling_and_person_present"}),
             ]
 
             active_risks: list[RiskSignal] = []
@@ -494,27 +467,11 @@ def main() -> None:
             debug = {
                 "persons": len(persons),
                 "faces": len(faces),
-                "roiin": suf_diag.get("roiin", "-"),
-                "motion": suf_diag.get("motion", "-"),
-                "torso(sh/hp)": "{:.2f} {:.2f}/{:.2f} {:.2f}".format(*torso_kp_conf(main_pose)),
-                "face(n/e/e)": "{:.2f} {:.2f} {:.2f}".format(*face_kp_conf(main_pose)),
-                "head": ("skip" if face_visible_now
-                         else "off" if head_det is None
-                         else "err" if head_present is None
-                         else "O" if head_present else "X"),
-                "face_seen": f"{now - last_face_seen_time:.0f}s ago" if last_face_seen_time > 0 else "never",
-                "was_in_roi": person_was_in_roi,
                 "cause": cause or "-",
                 "suf_elapsed": f"{suf_tracker.elapsed(now):.1f}s",
                 "clm_elapsed": f"{clm_tracker.elapsed(now):.1f}s",
-                "wrist_ema": tuple(round(x) for x in wrist_xy) if wrist_xy else "-",
-                "center_ema": tuple(round(x) for x in center_xy) if center_xy else "-",
-                "roi_exit": exit_active,
-                "fall_drop": fall_diag.get("fall_drop", "-"),
                 "cry_score": f"{cry_score:.2f}" if audio_on else "off",
                 "cry_elapsed": f"{cry_tracker.elapsed(now):.1f}s",
-                "babble_score": f"{whimper_score:.2f}" if audio_on else "off",
-                "babble_elapsed": f"{whimper_tracker.elapsed(now):.1f}s",
             }
             draw_overlay(frame, persons, faces, main_pose, safe_polygon,
                          active_risks, debug, clm_cfg["wrist_conf_threshold"], p_conf)

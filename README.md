@@ -27,7 +27,7 @@ python main.py
 - 키
   - `q` 종료
   - `r` ROI(안전 영역) 재정의 — 네 꼭짓점 다시 클릭
-- HUD에 `cry_score` / `babble_score`와 각 휴리스틱 진단(diag) 표시 (audio off = 마이크 없음)
+- HUD에 핵심 상태(persons/faces/cause/suf·clm_elapsed/cry) 표시 (audio off = 마이크 없음)
 
 ## ROI 설정 (안전 영역 지정)
 
@@ -70,9 +70,8 @@ python main.py
 | 이벤트 | YAMNet 클래스 | score 임계값 | 지속 시간 |
 |---|---|---|---|
 | `cry_detected` | Baby cry, Crying | 0.3 | 1초 |
-| `babble_detected` | Babbling | 0.25 | 2초 |
 
-- 두 이벤트 모두 **person이 화면에 있을 때만** 판정
+- **person이 화면에 있을 때만** 판정
 
 ### 서버 이벤트 매핑 (MQTT)
 
@@ -84,7 +83,6 @@ python main.py
 | `climbing_risk` | `CLIMBING` | CAUTION |
 | `roi_exit_risk` | `ROI_EXIT` | CAUTION |
 | `cry_detected` | `CRYING` | CAUTION |
-| `babble_detected` | `WHINING` | INFO |
 
 - 위험 시작/종료를 각각 publish (`phase`: START / END), payload에 `duration_s`·`startedAt`·`endedAt` 포함
 - 토픽·디바이스 시리얼은 `config.yaml`의 `mqtt` 섹션에서 설정

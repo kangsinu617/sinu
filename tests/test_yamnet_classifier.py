@@ -6,8 +6,6 @@ CFG = {
     "window_chunks": 3,
     "score_threshold": 0.3,
     "min_duration_s": 1.0,
-    "whimper_score_threshold": 0.25,
-    "whimper_min_duration_s": 2.0,
 }
 
 
@@ -42,8 +40,8 @@ def test_window_below_threshold_cry_inactive():
     buf: list[float] = []
     clf._window_mean(buf, 0.1)
     clf._window_mean(buf, 0.1)
-    clf._update_state(clf._window_mean(buf, 0.1), 0.0)
-    active, score, _, _ = clf.get_state()
+    clf._update_state(clf._window_mean(buf, 0.1))
+    active, score = clf.get_state()
     assert active is False
     assert score < 0.3
 
@@ -53,38 +51,14 @@ def test_window_above_threshold_cry_active():
     buf: list[float] = []
     clf._window_mean(buf, 0.5)
     clf._window_mean(buf, 0.5)
-    clf._update_state(clf._window_mean(buf, 0.5), 0.0)
-    active, score, _, _ = clf.get_state()
+    clf._update_state(clf._window_mean(buf, 0.5))
+    active, score = clf.get_state()
     assert active is True
     assert score >= 0.3
 
 
 def test_get_state_initial():
     clf = AudioClassifier(CFG)
-    active, score, whimper_active, whimper_score = clf.get_state()
+    active, score = clf.get_state()
     assert active is False
     assert score == 0.0
-    assert whimper_active is False
-    assert whimper_score == 0.0
-
-
-def test_whimper_above_threshold():
-    clf = AudioClassifier(CFG)
-    buf: list[float] = []
-    clf._window_mean(buf, 0.4)
-    clf._window_mean(buf, 0.4)
-    clf._update_state(0.0, clf._window_mean(buf, 0.4))
-    _, _, whimper_active, whimper_score = clf.get_state()
-    assert whimper_active is True
-    assert whimper_score >= 0.25
-
-
-def test_whimper_below_threshold():
-    clf = AudioClassifier(CFG)
-    buf: list[float] = []
-    clf._window_mean(buf, 0.1)
-    clf._window_mean(buf, 0.1)
-    clf._update_state(0.0, clf._window_mean(buf, 0.1))
-    _, _, whimper_active, whimper_score = clf.get_state()
-    assert whimper_active is False
-    assert whimper_score < 0.25

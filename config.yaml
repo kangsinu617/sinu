@@ -66,5 +66,3 @@ audio:
   window_chunks: 3                 # 슬라이딩 윈도우 크기 (~2.9초)
   score_threshold: 0.3             # cry_active=True 임계값
   min_duration_s: 1.0              # cry_tracker 판정까지 최소 지속 시간
-  whimper_score_threshold: 0.25    # whimper_active=True 임계값 (cry보다 낮게)
-  whimper_min_duration_s: 2.0     # whimper_tracker 판정까지 최소 지속 시간
