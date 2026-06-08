@@ -106,14 +106,12 @@ def test_climbing_all_conditions_met():
 
 from vision.heuristics import evaluate_suffocation
 
-EDGE_T = 0.044
-
 
 def test_suffocation_never_in_roi():
     # ROI 안에서 본 적 없으면(빈 방) 판정 안 함
     active, cause, diag = evaluate_suffocation(
-        True, 0.12, face_visible_now=False, face_recently_seen=True,
-        person_was_in_roi=False, flipped_edge_threshold=EDGE_T)
+        True, True, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=False)
     assert active is False
     assert cause is None
     assert diag["block"] == "not_in_roi"
@@ -122,8 +120,8 @@ def test_suffocation_never_in_roi():
 def test_suffocation_face_visible_now():
     # 지금 얼굴이 보이면 위험 아님
     active, cause, diag = evaluate_suffocation(
-        True, 0.03, face_visible_now=True, face_recently_seen=True,
-        person_was_in_roi=True, flipped_edge_threshold=EDGE_T)
+        True, False, face_visible_now=True, face_recently_seen=True,
+        person_was_in_roi=True)
     assert active is False
     assert diag["block"] == "face_detected"
 
@@ -131,26 +129,26 @@ def test_suffocation_face_visible_now():
 def test_suffocation_face_never_seen():
     # face를 최근에 본 적 없으면 오탐 방지
     active, cause, diag = evaluate_suffocation(
-        True, 0.12, face_visible_now=False, face_recently_seen=False,
-        person_was_in_roi=True, flipped_edge_threshold=EDGE_T)
+        True, True, face_visible_now=False, face_recently_seen=False,
+        person_was_in_roi=True)
     assert active is False
     assert diag["block"] == "face_never_seen"
 
 
-def test_suffocation_prone_high_edge():
-    # subject 있음 + 구조 노출(edge ≥ 임계) → 엎드림(flipped)
+def test_suffocation_prone_torso_visible():
+    # subject 있음 + 몸통 키포인트 노출(torso_visible) → 엎드림(flipped)
     active, cause, diag = evaluate_suffocation(
-        True, 0.12, face_visible_now=False, face_recently_seen=True,
-        person_was_in_roi=True, flipped_edge_threshold=EDGE_T)
+        True, True, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True)
     assert active is True
     assert cause == "flipped"
 
 
-def test_suffocation_covered_low_edge():
-    # subject 있음 + 매끈한 천(edge < 임계) → 천에 덮임
+def test_suffocation_covered_torso_invisible():
+    # subject 있음 + 몸통 키포인트 죽음(천에 덮여 키포인트 소실) → 천에 덮임
     active, cause, diag = evaluate_suffocation(
-        True, 0.03, face_visible_now=False, face_recently_seen=True,
-        person_was_in_roi=True, flipped_edge_threshold=EDGE_T)
+        True, False, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True)
     assert active is True
     assert cause == "face_covered"
 
@@ -158,17 +156,17 @@ def test_suffocation_covered_low_edge():
 def test_suffocation_buried_no_subject():
     # 몸·머리까지 완전히 파묻혀 검출 붕괴 → 얼굴까지 덮임
     active, cause, diag = evaluate_suffocation(
-        False, 0.0, face_visible_now=False, face_recently_seen=True,
-        person_was_in_roi=True, flipped_edge_threshold=EDGE_T)
+        False, False, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True)
     assert active is True
     assert cause == "face_covered"
 
 
 def test_suffocation_out_of_view_blocks_flipped():
-    # flipped 후보(edge ≥ 임계)지만 ROI 포함율 낮음(발만 보임) → 위험 아님
+    # flipped 후보(torso 보임)지만 ROI 포함율 낮음(발만 보임) → 위험 아님
     active, cause, diag = evaluate_suffocation(
-        True, 0.12, face_visible_now=False, face_recently_seen=True,
-        person_was_in_roi=True, flipped_edge_threshold=EDGE_T,
+        True, True, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True,
         roi_containment=0.68, out_of_view_roi_threshold=0.72)
     assert active is False
     assert cause == "out_of_view"
@@ -178,8 +176,8 @@ def test_suffocation_out_of_view_blocks_flipped():
 def test_suffocation_prone_in_view_still_fires():
     # flipped 후보 + ROI 포함율 충분(엎드림 정탐) → flipped 유지
     active, cause, diag = evaluate_suffocation(
-        True, 0.12, face_visible_now=False, face_recently_seen=True,
-        person_was_in_roi=True, flipped_edge_threshold=EDGE_T,
+        True, True, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True,
         roi_containment=0.88, out_of_view_roi_threshold=0.72)
     assert active is True
     assert cause == "flipped"
@@ -208,12 +206,97 @@ def test_pose_face_visible_none():
     assert pose_face_visible(None, 0.5, 4) is False
 
 
-def test_suffocation_out_of_view_does_not_affect_face_covered():
-    # 가드는 flipped 분기 전용 — edge 낮은 face_covered는 ROI 포함율 낮아도 유지
+from vision.heuristics import pose_torso_visible
+
+
+def test_pose_torso_visible_prone():
+    # 엎드림: 어깨·엉덩이 4/4 높은 conf(측정 0.95~0.99) → True
+    pose = _pose(
+        left_shoulder=(10.0, 100.0, 0.99), right_shoulder=(20.0, 100.0, 0.98),
+        left_hip=(10.0, 200.0, 0.97), right_hip=(20.0, 200.0, 0.95))
+    assert pose_torso_visible(pose, 0.5, 2) is True
+
+
+def test_pose_torso_visible_covered():
+    # 천 덮임: 몸통 키포인트 0/4(측정 0.0) → False (face_covered로 분류)
+    pose = _pose(
+        left_shoulder=(0.0, 0.0, 0.0), right_shoulder=(0.0, 0.0, 0.0),
+        left_hip=(0.0, 0.0, 0.0), right_hip=(0.0, 0.0, 0.0))
+    assert pose_torso_visible(pose, 0.5, 2) is False
+
+
+def test_pose_torso_visible_partial_side():
+    # 측면 누움: 한쪽 어깨·엉덩이만 보임(2/4) → min_visible=2면 True
+    pose = _pose(
+        left_shoulder=(10.0, 100.0, 0.9), right_shoulder=(20.0, 100.0, 0.1),
+        left_hip=(10.0, 200.0, 0.9), right_hip=(20.0, 200.0, 0.1))
+    assert pose_torso_visible(pose, 0.5, 2) is True
+
+
+def test_pose_torso_visible_none():
+    assert pose_torso_visible(None, 0.5, 2) is False
+
+
+def test_suffocation_out_of_view_blocks_face_covered():
+    # 발만 보임: subject 있음 + torso 안 보임 + ROI 포함율 낮음 → out_of_view(위험 아님)
     active, cause, diag = evaluate_suffocation(
-        True, 0.03, face_visible_now=False, face_recently_seen=True,
-        person_was_in_roi=True, flipped_edge_threshold=EDGE_T,
+        True, False, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True,
         roi_containment=0.50, out_of_view_roi_threshold=0.72)
+    assert active is False
+    assert cause == "out_of_view"
+    assert diag["block"] == "out_of_view"
+
+
+def test_suffocation_face_covered_in_view_still_fires():
+    # 이불 덮임: torso 안 보임 + ROI 포함율 충분(시야 안) → face_covered 유지
+    active, cause, diag = evaluate_suffocation(
+        True, False, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True,
+        roi_containment=0.88, out_of_view_roi_threshold=0.72)
+    assert active is True
+    assert cause == "face_covered"
+
+
+def test_suffocation_buried_no_subject_ignores_roiin():
+    # 완전 파묻힘(subject 없음)은 ROI 포함율 가드보다 먼저 face_covered로 반환(위험 유지)
+    active, cause, diag = evaluate_suffocation(
+        False, False, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True,
+        roi_containment=0.0, out_of_view_roi_threshold=0.72)
+    assert active is True
+    assert cause == "face_covered"
+
+
+def test_suffocation_active_motion_blocks_flipped():
+    # flipped 후보(torso·roiin 충분)지만 활동량 높음(버둥거림) → 위험 아님
+    active, cause, diag = evaluate_suffocation(
+        True, True, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True,
+        roi_containment=0.88, out_of_view_roi_threshold=0.72,
+        motion_level=0.05, motion_threshold=0.02)
+    assert active is False
+    assert cause == "active_motion"
+    assert diag["block"] == "active_motion"
+
+
+def test_suffocation_low_motion_still_fires_flipped():
+    # flipped 후보 + 활동량 낮음(정지=무반응) → flipped 유지
+    active, cause, diag = evaluate_suffocation(
+        True, True, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True,
+        roi_containment=0.88, out_of_view_roi_threshold=0.72,
+        motion_level=0.005, motion_threshold=0.02)
+    assert active is True
+    assert cause == "flipped"
+
+
+def test_suffocation_motion_does_not_affect_face_covered():
+    # 가드는 flipped 분기 전용 — torso 안 보이는 face_covered는 활동량 높아도 유지
+    active, cause, diag = evaluate_suffocation(
+        True, False, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True,
+        motion_level=0.05, motion_threshold=0.02)
     assert active is True
     assert cause == "face_covered"
 
@@ -250,3 +333,50 @@ def test_fall_ascending_ignored():
     active, diag = evaluate_fall((50.0, 70.0), (50.0, 100.0), 200.0)
     assert active is False
     assert diag["block"] == "drop_too_small"
+
+
+def test_suffocation_head_present_overrides_torso_flipped():
+    # head 보임 → torso 안 보여도 flipped (head 우선)
+    active, cause, diag = evaluate_suffocation(
+        True, False, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True, head_present=True)
+    assert active is True
+    assert cause == "flipped"
+
+
+def test_suffocation_head_absent_overrides_torso_face_covered():
+    # 얼굴만 천: torso 4/4(True)지만 head 없음 → face_covered (핵심 수정 케이스)
+    active, cause, diag = evaluate_suffocation(
+        True, True, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True, head_present=False)
+    assert active is True
+    assert cause == "face_covered"
+
+
+def test_suffocation_head_none_falls_back_to_torso_flipped():
+    # head_present=None → 기존 torso 폴백: torso 보임 → flipped
+    active, cause, diag = evaluate_suffocation(
+        True, True, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True, head_present=None)
+    assert active is True
+    assert cause == "flipped"
+
+
+def test_suffocation_head_none_falls_back_to_torso_face_covered():
+    # head_present=None → torso 폴백: torso 안 보임 → face_covered
+    active, cause, diag = evaluate_suffocation(
+        True, False, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True, head_present=None)
+    assert active is True
+    assert cause == "face_covered"
+
+
+def test_suffocation_head_present_active_motion_blocks():
+    # head 보임(flipped 후보)이라도 활동량 높으면 active_motion (가드 유지)
+    active, cause, diag = evaluate_suffocation(
+        True, False, face_visible_now=False, face_recently_seen=True,
+        person_was_in_roi=True,
+        roi_containment=0.88, out_of_view_roi_threshold=0.72,
+        motion_level=0.05, motion_threshold=0.02, head_present=True)
+    assert active is False
+    assert cause == "active_motion"

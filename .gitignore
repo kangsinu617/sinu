@@ -7,8 +7,8 @@ tests/samples/
 events_queue.jsonl
 docs/superpowers/
 v0/
-  *.mp4
-  saved_roi.json
-  /엣지케이스.png
-  /잘누워있는데얼굴안보여.png
+*.mp4
+saved_roi.json
+/엣지케이스.png
+/잘누워있는데얼굴안보여.png
 

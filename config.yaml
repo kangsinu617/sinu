@@ -2,10 +2,11 @@ camera:
   index: 2
 
 models:
-  person: yolov8n.pt
+  person: yolo26n.pt
   face:
     score_threshold: 0.6
-  pose: yolov8n-pose.pt
+  pose: yolo26n-pose.pt
+  head: models/crowdhuman_yolov5m.pt   # cause 판별용 머리 검출 (torch.hub 로드)
 
 auto_roi:
   enabled: true
@@ -26,10 +27,13 @@ heuristics:
   suffocation:
     min_duration_s: 5.0
     face_memory_s: 30.0        # 최근 이 초 안에 face가 보인 적 있으면 소실 추적
-    flipped_edge_threshold: 0.044  # 얼굴 없을 때 subject 엣지밀도(회색조,색무관) ≥ 이 값=flipped(엎드림,구조 노출), 미만/소실=face_covered(매끈한 천)
     out_of_view_roi_threshold: 0.72  # flipped 후보라도 subject bbox의 ROI 포함율 < 이 값이면 카메라 밖(발만 보임 등)=out_of_view(위험 아님). 엎드림 정탐 0.88 vs 엣지케이스 0.68 사이
     face_kp_conf_threshold: 0.5  # pose 얼굴 키포인트(코·눈·귀)를 "보임"으로 칠 최소 conf
-    face_kp_min_visible: 4       # 얼굴 키포인트 이만큼 보이면 face_visible로 간주(YuNet 실패해도). 정상 누움 5/5 vs 엎드림 1/5 사이
+    face_kp_min_visible: 2       # 얼굴 키포인트 이만큼 보이면 face_visible로 간주(YuNet 실패해도). 천장 보고 누우면 5개 다 잡히지만 카메라 각도로 귀가 가려지면 코+양눈=3개라 4는 너무 빡세 supine 정상자세가 face_covered↔flipped로 깜빡였음 → 2로 완화. 엎드림(코 0.08)·천 덮임(0/5)은 키포인트가 0개라 낮춰도 "안전" 오인 없음 — supine 견고성만 오름
+    torso_kp_conf_threshold: 0.5  # pose 몸통 키포인트(어깨·엉덩이)를 "보임"으로 칠 최소 conf
+    torso_kp_min_visible: 2       # 몸통 키포인트(어깨2+엉덩이2) 이만큼 conf 이상 보이면 torso_visible=flipped(엎드림,등 노출). 측정상 엎드림 4/4(0.95~0.99) vs 천 덮임 0/4(0.0)로 완전 분리. 측면(한쪽만)도 잡으려 2로 둠
+    motion_threshold: 0.02       # flipped 후보라도 subject 영역 프레임간 활동량(회색조 절대차 평균/255) ≥ 이 값이면 살아 움직임(배 시간·버둥거림)=active_motion(위험 아님). 인형(정지)·천 덮인 무반응은 낮음. HUD의 motion 값 보고 측정·튜닝 필요
+    head_conf_threshold: 0.25    # head "present" 판정 conf. 측정 prone 0.40 vs 천 0.00 사이. 라벨만 좌우하고(둘 다 DANGER) 안전엔 무관해 튜닝 부담 낮음
   climbing:
     min_duration_s: 2.0
     wrist_conf_threshold: 0.5
