@@ -27,7 +27,7 @@ python main.py
 - 키
   - `q` 종료
   - `r` ROI(안전 영역) 재정의 — 네 꼭짓점 다시 클릭
-- HUD에 핵심 상태(persons/faces/cause/suf·clm_elapsed/cry) 표시 (audio off = 마이크 없음)
+- HUD에 핵심 상태(persons/faces/cause/suf·clm_elapsed/cry/motion/head/torso/roi_in) 표시 (audio off = 마이크 없음)
 
 ## ROI 설정 (안전 영역 지정)
 
@@ -98,7 +98,7 @@ python main.py
 
 - [x] 1: 웹캠 + YOLO26n 렌더 루프
 - [x] 2: pose + ROI 기반 영상 휴리스틱 (suffocation/climbing/roi_exit)
-- [x] 3: fall_risk 분리 + YAMNet 울음·옹알이 감지 + duration_s 전송
+- [x] 3: fall_risk 분리 + YAMNet 울음 감지 + duration_s 전송
 - [x] 4: 서버 연동 (MQTT)
 - [x] 5: 폴리곤 ROI 전환 + 질식 사라짐 추적 재설계 + 실물(인형) 검증
 - [x] 6: 데모 준비 완료 / Jetson 이식 예정

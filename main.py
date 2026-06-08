@@ -472,6 +472,10 @@ def main() -> None:
                 "clm_elapsed": f"{clm_tracker.elapsed(now):.1f}s",
                 "cry_score": f"{cry_score:.2f}" if audio_on else "off",
                 "cry_elapsed": f"{cry_tracker.elapsed(now):.1f}s",
+                "motion": f"{suf_motion:.3f}",
+                "head": ("T" if head_present else "F") if head_present is not None else "-",
+                "torso": "T" if suf_torso else "F",
+                "roi_in": f"{suf_roiin:.2f}" if suf_roiin is not None else "-",
             }
             draw_overlay(frame, persons, faces, main_pose, safe_polygon,
                          active_risks, debug, clm_cfg["wrist_conf_threshold"], p_conf)
