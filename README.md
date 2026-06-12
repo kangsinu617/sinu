@@ -48,22 +48,77 @@ python main.py
 | 이벤트 | 조건 | 지속 시간 |
 |---|---|---|
 | `fall_risk` | 1.5초 윈도우 내 순 하강 ≥ 80px (**raw bbox center**, EMA 미적용) | — |
-| `climbing_risk` | wrist가 ROI 변(난간)에 `rail_band_px` 이내 + 서있음 자세 | 2초 |
+| `climbing_risk` | wrist가 ROI 변(난간)에 `rail_band_px` 이내 + 서있음 자세. `suffocation_risk` 활성 중엔 발행 안 함(상호 배타, 질식 우선) | 2초 |
 | `suffocation_risk` | 아래 두 경로 중 하나 | 5초 |
-| `roi_exit_risk` | person 중심이 안전 ROI 밖 | 즉시(grace 0.5s) |
 
-**suffocation_risk 원인 분기** (검출기 신뢰도·색이 아니라 pose 몸통 키포인트 가시성으로 구분. ROI 안에 있었고 face가 최근 `face_memory_s` 보인 적 있을 때만 판정):
-- 공통 트리거: subject(pose 우선, 없으면 person) bbox에서 face가 안 보이는 상태가 지속.
-- 원인은 pose의 **몸통 키포인트(어깨·엉덩이) 가시성**으로 가른다 — 엎드린 인형은 등을 카메라로 향해 어깨·엉덩이가 잘 잡히고(실측 4/4, conf 0.95~0.99), 천에 덮이면 키포인트가 0.0으로 죽는다(0/4). 구간이 압도적으로 멀어 `torso_kp_conf_threshold`(0.5) 이상이 `torso_kp_min_visible`(2)개 이상이면 `flipped`로 분리. (이전엔 회색조 엣지밀도 `edge_density`로 갈랐으나 prone 0.046~0.159 vs covered 0.012~0.042로 구간이 붙어 있어 교체 — 천 주름·무늬에 흔들리던 오탐도 함께 사라짐.)
-- `flipped`: 엎드림. subject 있음 + 몸통 키포인트 노출(torso_visible) → 얼굴이 매트 쪽을 향함. 서버 이벤트 `PRONE_SUFFOCATION`(DANGER).
-- `face_covered`: 몸통 키포인트가 천에 덮여 소실(torso_visible False), 또는 subject가 아예 없음(몸·머리까지 완전히 파묻혀 검출 붕괴). 서버 이벤트 `BLANKET_SUFFOCATION`(DANGER).
-- **오탐 가드 1 — 정상 누움인데 face 미검출**: 카메라 각도상 YuNet이 얼굴을 못 잡아도, 천장을 보고 누우면(supine) pose가 얼굴 키포인트(코·눈·귀)를 높은 conf로 잡는다(실측 5/5, 0.93~0.98). 엎드리면(prone) 얼굴이 매트를 향해 죽는다(실측 1/5, nose 0.08). 그래서 `face_visible`을 **YuNet face가 person 안에 검출 OR ROI 안에 face 검출 OR pose 얼굴 키포인트(`face_kp_conf_threshold` 이상이 `face_kp_min_visible`개 이상)**로 본다. 정상 누움은 `face_detected`로 빠져 위험 아님, 엎드림은 그대로 `flipped` 발송. **ROI 안 face 항을 둔 이유**: 몸만 덮여 YOLO person이 실패해도(=`p` None) 얼굴이 노출돼 있으면 안전이어야 하는데, person bbox에만 묶으면 "얼굴만 보임"이 질식으로 오탐난다(얼굴 노출=안전 원칙). 단 셋 다 보조(OR) 신호라 이불덮힘(얼굴까지 가려짐)은 영향받지 않는다.
-- **오탐 가드 2 — 발만 보임(out_of_view)**: subject bbox의 ROI 포함율(`roi_containment`)이 `out_of_view_roi_threshold`(0.72) 미만이면 인형이 카메라 각도 안에 제대로 안 잡힌 상태(발만 보임 등)다. 엎드림 정탐은 포함율이 높고(실측 88%) 이 케이스는 낮아(68%) 갈린다. 이때는 위험이 아니라 `out_of_view`로 처리한다. **`flipped`/`face_covered` 공통 적용**(torso로 원인을 가르기 전에 시야 밖을 먼저 거른다) — 단, subject 자체가 아예 없는 완전 파묻힘은 이 가드보다 앞서 `face_covered`로 반환해, ROI 포함율 가드가 진짜 질식을 `out_of_view`로 놓치지 않게 한다.
-- **오탐 가드 3 — 능동적 움직임(active_motion)**: `flipped` 후보라도 subject 영역의 프레임 간 활동량(회색조 절대차 평균/255이 `motion_threshold`(0.02) 이상)이 크면 살아 움직이는 중(배 시간·능동적 버둥거림)이라 무반응 질식이 아니다 → `active_motion`(위험 아님). 인형(정지)·천 덮인 무반응은 활동량이 낮아 그대로 위험으로 남는다. `flipped` 분기 전용(face_covered는 천에 덮인 채 버둥거려도 위험할 수 있어 면제 안 함). 단일 프레임 신호라 산발적이어도 5초 지속 트리거가 연속 정지만 채택하므로 가끔의 움직임으로도 카운트가 리셋된다. **인형은 정지 상태라 데모에서는 이 경로가 나타나지 않고, 실제 영아 적용 시 무반응만 위험으로 좁히는 가드다.** HUD의 `motion` 값으로 임계 측정·튜닝 필요.
-- 한계: **얼굴에만 이불을 덮으면** 몸통 키포인트(어깨·엉덩이)가 살아 있어 `flipped`로 오판함 → `BLANKET`이어야 할 게 `PRONE`으로 발송. 얼굴 위치를 모르는(얼굴 미검출) 단일 프레임의 구조적 한계라 못 고침. 데모에선 이불을 상체까지 덮어 키포인트를 죽여 `face_covered`로 가게 연출해 회피.
+**suffocation_risk — 2층 분리 구조** (감지와 원인 분류를 분리. 분류 신호는 감지를 차단하지 못한다 — 2026-06-10 카메라 검증에서 분류용 게이트(side 가드·climbing 베토)의 오탐이 그대로 질식 미탐으로 전이되는 구조적 결함이 확인돼 재설계):
+
+- **1층 감지**: `face 미가시 AND 진입 게이트`가 5초 지속되면 위험. 진입 게이트 통과 후 억제 조건은 face_visible 단 하나.
+  - `face_visible` = YuNet face가 person 안에 검출 OR ROI 안에 face 검출 OR pose 얼굴 키포인트(`face_kp_conf_threshold` 이상 `face_kp_min_visible`개 이상). 천장 보고 누우면(supine) 얼굴 키포인트가 살아 안전으로 빠지고, 엎드리면(prone) 죽어 위험으로 남는다(실측 supine 5/5 conf 0.93~0.98 vs prone 1/5 nose 0.08). HUD `face_src`(yunet/roi/kp)가 발동 항을 표시 — prone인데 face_visible이 켜지면 범인을 특정할 수 있다.
+  - 진입 게이트(빈 방·인형 오탐 방지) = (face가 최근 `face_memory_s` 안에 보임 AND subject가 ROI 안에 있었음) OR **subject 중심이 ROI 안에 `presence_entry_s`(10초) 연속 존재**(`presence_gap_s` 2초 이내 검출 깜빡임은 연속 취급) OR 진행 중 래치. presence 경로가 "입장부터 얼굴을 한 번도 안 보여준 엎드림" 미탐을 해소한다. HUD `entry`(face/presence/latch)가 통과 경로를 표시.
+- **2층 원인 라벨** (비차단 — 어떤 값이어도 감지를 끄지 못한다): cause는 항상 `flipped` 또는 `face_covered` 둘 중 하나(unknown 없음 — 서버 이벤트가 둘뿐이라 애매해도 둘 중 하나로 보내고 신뢰 맥락은 flags로 싣는다).
+  - subject(pose 우선, 없으면 person)가 아예 없음 → `face_covered` (완전 파묻힘 = 검출 붕괴).
+  - head 검출(crowdhuman) 보임 → `flipped`(뒤통수 노출=엎드림) / 안 보임 → `face_covered`(얼굴만 천 덮임 포함). head 검출기 미사용·예외 시 torso 폴백: 몸통 키포인트(어깨·엉덩이, 실측 prone 4/4 conf 0.95~0.99 vs 천 덮임 0/4)가 보이면 `flipped`, 소실이면 `face_covered`.
+  - `out_of_view`(ROI 포함율 < `out_of_view_roi_threshold`)·`active_motion`(활동량 ≥ `motion_threshold`)·`side_lying`(옆누움 기하, 가드 활성 시) — **flag(메타데이터)로만** 이벤트·HUD에 실린다. 이전 구조에선 이들이 위험을 차단하는 게이트였고, 그 오류가 그대로 질식 미탐이 됐다.
+- 이벤트 cause는 START 시점(5초가 차는 프레임)의 라벨로 고정된다(transition이 START에만 발행).
 
 > 두 원인은 **서버 이벤트가 분리됨**: `flipped`→`PRONE_SUFFOCATION`, `face_covered`→`BLANKET_SUFFOCATION` (둘 다 DANGER).
-> **알려진 한계:** 보호자가 아기를 손으로 들어올려 ROI 밖으로 빼면 `roi_exit`가 경계를 못 잡아 `face_covered` 오탐이 날 수 있음. 안전 우선(false positive < false negative) 원칙으로 그대로 둠.
+> **알려진 한계:** 보호자가 아기를 손으로 들어올려 ROI 밖으로 빼면 `face_covered` 오탐이 날 수 있음. 안전 우선(false positive < false negative) 원칙으로 그대로 둠.
+
+### 알려진 한계 (질식 감지)
+
+설계상 감수하거나 아직 해결하지 못한 케이스를 정직하게 기록한다. FP(오탐)보다
+FN(미탐)을 더 경계하는 원칙 하에 검토됐다.
+
+1. **옆누움 오탐** — 얼굴이 카메라 반대쪽이면 face 미가시로 울린다. spread 가드는
+   2026-06-10 검증에서 각도 종속 임계(0.8, 06-09 측정)가 prone까지 잡아 비활성화
+   했고, HUD `side` 값을 prone/옆누움에서 재측정해 켜더라도 **2층 flag로만 동작**
+   한다(감지 차단 금지 — 재설계 원칙). 옆누움 알림은 FP < FN으로 수용.
+2. **앉거나 서서 카메라에 등 돌림 → 오탐** — 얼굴 미가시 5초면 울린다. 앉음/누움
+   구분은 별도 측정·기준이 필요(향후 과제). climbing 판정으로 억제하는 베토는
+   시도했다가 철회 — climbing 자체가 누운 자세에서 오발해(아래 9번) 진짜 prone
+   질식을 차단(FN)했다(2026-06-10 카메라 검증). 재도입 금지.
+3. **ROI 가장자리·버둥거림 → 오탐** — out_of_view(ROI 포함율)와 active_motion
+   (활동량)은 flag로 강등돼 더 이상 알림을 막지 않는다. 가장자리에 걸치거나
+   배 시간(tummy time)에 얼굴이 안 보이면 울린다. 대신 경련성(움직이는) 질식
+   미탐과 bbox 지터로 인한 motion 과대 억제 문제는 구조적으로 사라졌다.
+4. **ROI 안 방치된 얼굴 없는 인형 → 오탐** — presence 경로(10초 연속 존재)는
+   face 이력 없이 판정을 시작하므로, 얼굴이 안 잡히는 인형이 ROI 안에 오래 있으면
+   울릴 수 있다. 베이비룸 특성상 드물다고 보고 수용.
+5. **입장 직후 10초 이내** — 입장부터 얼굴을 안 보여준 경우 presence 경로가
+   차오르는 `presence_entry_s`(10초) + 지속 5초 동안은 판정이 없다.
+6. **래치 상한 5분** — 위험 활성 후 얼굴이 끝내 재출현하지 않으면(예: 카메라에
+   얼굴이 안 잡힌 채 아기를 데려감) 알람이 최대 `latch_max_s`(기본 300초)까지
+   유지된 뒤 강제 해제된다.
+7. **제2 인물(보호자) 개입** — 보호자 얼굴이 ROI에 들어오면 face_visible로
+   간주돼 알람이 억제·해제된다(보호자 개입 = 상황 종료로 해석). main subject
+   선택도 흔들릴 수 있다.
+8. **인형·포스터 등 가짜 얼굴 → 미탐** — ROI 안에 있으면 face_visible로 잡혀
+   진짜 위험을 억제할 수 있다(face_visible이 유일한 억제 조건이라 영향이 더
+   커졌다). pose 얼굴 키포인트 환각도 같은 경로 — 2026-06-13 검증에서
+   `face_src=kp`로 위험이 취소되는 케이스가 확인돼 `face_kp_min_visible`을
+   2→3으로 상향(supine은 코+양눈 3개 conf 0.93+라 유지). 잔존 시 HUD
+   `face_kp`(임계 이상 키포인트 수)로 환각 개수를 관찰해 추가 조정.
+9. **climbing(crib_rail) 오발** — 안정적으로 누운 자세에서도 손목이 난간
+   밴드(`rail_band_px` 40px) 안에 들고 누운 방향의 hip−shoulder y차가
+   `standing_y_margin`(20px)을 넘으면 crib_rail_risk가 뜬다(2026-06-10 관찰).
+   HUD의 `clm_m`(standing_margin)·`rail_d`(rail_dist) 값을 누움/실제 매달림에서
+   각각 기록해 두 임계값을 올려 튜닝할 것.
+10. **person 중복 검출** — 같은 대상이 person 박스 2개로 겹쳐 잡히는 경우가
+    간간히 있음(2026-06-10 관찰). main subject 선택이 흔들릴 수 있다. IoU 중복
+    제거 미적용(향후 과제).
+11. **저조도/야간** — 미검증.
+12. **prone이 간헐적으로 BLANKET으로 라벨** — head 검출기(crowdhuman)가 이
+    카메라 각도에서 뒤통수를 간헐적으로 완전히 놓쳐(2026-06-13 실측: 임계
+    미달 후보조차 0건), 충전 5초 내내 못 보면 face_covered로 빠진다.
+    `head_memory_s`를 충전 윈도우와 같게(5초) 둬 "충전 중 한 번이라도 보면
+    flipped"로 완화 — 오탐 현저히 감소, 잔존은 수용. 시도 후 철회한 대안:
+    subject 크롭 업스케일 입력(천 덮인 머리까지 conf 0.1~0.3으로 올라와 분리
+    붕괴), head 미검출 시 torso 폴백(얼굴만 천이 전부 flipped로 빠져 BLANKET
+    포기), 임계 0.35 상향(prone 검출까지 줄어듦). 알림 자체는 둘 다 DANGER.
+
+`side_lying_guard.spread_max`(0.8)는 06-09 카메라 각도에서 측정한 값(prone 최저
+1.11 vs 옆누움 최고 0.63)이다. **카메라 각도를 바꾸면 재측정 필수.**
 
 ### 음성 (YAMNet AudioSet)
 
@@ -82,7 +137,6 @@ python main.py
 | `suffocation_risk` (cause=`face_covered`) | `BLANKET_SUFFOCATION` | DANGER |
 | `suffocation_risk` (cause=`flipped`) | `PRONE_SUFFOCATION` | DANGER |
 | `climbing_risk` | `CLIMBING` | CAUTION |
-| `roi_exit_risk` | `ROI_EXIT` | CAUTION |
 | `cry_detected` | `CRYING` | CAUTION |
 | `babble_detected` | `WHINING` | INFO |
 

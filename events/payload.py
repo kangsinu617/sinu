@@ -12,7 +12,6 @@ from vision.heuristics import RiskSignal
 EVENT_TYPE_MAP: dict = {
     "climbing_risk": "CLIMBING",
     "fall_risk": "FALL",
-    "roi_exit_risk": "ROI_EXIT",
     "cry_detected": "CRYING",
     "babble_detected": "WHINING",
 }
@@ -28,7 +27,6 @@ SEVERITY_MAP: dict = {
     "FALL": "DANGER",
     "CLIMBING": "CAUTION",
     "CRYING": "CAUTION",
-    "ROI_EXIT": "CAUTION",
     "WHINING": "INFO",
 }
 

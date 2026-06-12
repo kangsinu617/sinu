@@ -27,19 +27,25 @@ heuristics:
   suffocation:
     min_duration_s: 5.0
     face_memory_s: 30.0        # 최근 이 초 안에 face가 보인 적 있으면 소실 추적
-    out_of_view_roi_threshold: 0.72  # flipped 후보라도 subject bbox의 ROI 포함율 < 이 값이면 카메라 밖(발만 보임 등)=out_of_view(위험 아님). 엎드림 정탐 0.88 vs 엣지케이스 0.68 사이
+    presence_entry_s: 10.0     # subject 중심이 ROI 안에 이 시간 연속 존재하면 face 이력 없이도 판정 시작 (입장부터 엎드림 미탐 해소)
+    presence_gap_s: 2.0        # 이 이내의 검출 깜빡임은 연속 존재로 취급
+    out_of_view_roi_threshold: 0.72  # subject bbox의 ROI 포함율 < 이 값이면 out_of_view flag(2층 메타데이터 — 감지를 차단하지 않음). 엎드림 정탐 0.88 vs 발만 보임 0.68 사이
     face_kp_conf_threshold: 0.5  # pose 얼굴 키포인트(코·눈·귀)를 "보임"으로 칠 최소 conf
-    face_kp_min_visible: 2       # 얼굴 키포인트 이만큼 보이면 face_visible로 간주(YuNet 실패해도). 천장 보고 누우면 5개 다 잡히지만 카메라 각도로 귀가 가려지면 코+양눈=3개라 4는 너무 빡세 supine 정상자세가 face_covered↔flipped로 깜빡였음 → 2로 완화. 엎드림(코 0.08)·천 덮임(0/5)은 키포인트가 0개라 낮춰도 "안전" 오인 없음 — supine 견고성만 오름
+    face_kp_min_visible: 3       # 얼굴 키포인트 이만큼 보이면 face_visible로 간주(YuNet 실패해도). 4는 supine 깜빡임(귀 가림 시 코+양눈=3), 2는 prone에서 kp 환각 2개로 위험이 취소되는 미탐 발생(2026-06-13 face_src=kp 실측) → 3으로 상향. supine은 코+양눈 3개 conf 0.93+라 충족, HUD face_kp로 환각 개수 관찰 가능
     torso_kp_conf_threshold: 0.5  # pose 몸통 키포인트(어깨·엉덩이)를 "보임"으로 칠 최소 conf
     torso_kp_min_visible: 2       # 몸통 키포인트(어깨2+엉덩이2) 이만큼 conf 이상 보이면 torso_visible=flipped(엎드림,등 노출). 측정상 엎드림 4/4(0.95~0.99) vs 천 덮임 0/4(0.0)로 완전 분리. 측면(한쪽만)도 잡으려 2로 둠
-    motion_threshold: 0.02       # flipped 후보라도 subject 영역 프레임간 활동량(회색조 절대차 평균/255) ≥ 이 값이면 살아 움직임(배 시간·버둥거림)=active_motion(위험 아님). 인형(정지)·천 덮인 무반응은 낮음. HUD의 motion 값 보고 측정·튜닝 필요
-    head_conf_threshold: 0.25    # head "present" 판정 conf. 측정 prone 0.40 vs 천 0.00 사이. 라벨만 좌우하고(둘 다 DANGER) 안전엔 무관해 튜닝 부담 낮음
+    motion_threshold: 0.02       # subject 영역 프레임간 활동량(회색조 절대차 평균/255) ≥ 이 값이면 active_motion flag(2층 메타데이터 — 감지를 차단하지 않음). HUD motion 값 보고 튜닝
+    head_conf_threshold: 0.25    # head "present" 판정 conf. 전체 프레임 입력 기준 측정 prone 0.40 vs 천 0.00 사이. 라벨만 좌우하고(둘 다 DANGER) 안전엔 무관. 주의: subject 크롭 업스케일 입력은 천 머리도 0.1~0.3까지 올라와 분리가 깨짐(2026-06-13 실측, 철회)
+    head_memory_s: 5.0           # head 검출 시간 스무딩 — 최근 이 초 안에 subject bbox 안 head를 봤으면 present. 충전 윈도우(min_duration_s)와 같게 둬 "충전 중 한 번이라도 봤으면 flipped" — START 프레임 깜빡임이 flipped를 face_covered로 오분류(2026-06-13 검증). "얼굴만 천"은 head가 face 미가시 구간에만 돌아 stale 이력이 안 쌓여 face_covered 유지
+    latch_max_s: 300.0           # 진행 중 질식 래치 상한 — face/roi 메모리(30s)가 만료돼도 위험 판정 유지. 얼굴 재출현 시 즉시 해제, 끝내 안 보이면 이 시간 후 강제 해제(한계로 문서화)
+    side_lying_guard:
+      enabled: false             # 2026-06-10 검증에서 각도 종속 임계가 prone까지 잡아 비활성. 재측정 후 켜도 2층 side_lying flag로만 동작 — 감지를 차단하지 않는다(재설계 원칙)
+      spread_max: 0.8            # max(어깨,엉덩이 spread) ≤ 이 값이면 옆누움(안전). 측정(06-09 각도): prone 최저 1.11 vs 옆누움 최고 0.63 — 카메라 각도 바꾸면 재측정 필수
+      min_conf: 0.5              # 어깨쌍/엉덩이쌍 중 한 쌍이 좌우 모두 이 conf 이상이어야 가드 판단(천 덮임은 죽어서 미발동)
   climbing:
     min_duration_s: 2.0
     wrist_conf_threshold: 0.5
     standing_y_margin: 20      # hip_y - shoulder_y ≥ (px)
-  roi_exit:
-    min_duration_s: 0.0        # 즉시 판정, grace로 튐 완화
   fall:
     window_s: 1.5              # 이 시간 동안의 순 하강 거리를 본다 (단일 프레임 속도 X)
     min_drop_px: 80            # 윈도우 내 하강이 이만큼(px) 이상이면 낙상 (실측 낙하 ~106px)

@@ -37,12 +37,6 @@ def test_fall_maps_to_danger():
     assert payload["severity"] == "DANGER"
 
 
-def test_roi_exit_maps_to_caution():
-    payload = build_payload(_signal("roi_exit_risk"), "DEV-001")
-    assert payload["eventType"] == "ROI_EXIT"
-    assert payload["severity"] == "CAUTION"
-
-
 def test_cry_maps_to_caution():
     payload = build_payload(_signal("cry_detected"), "DEV-001")
     assert payload["eventType"] == "CRYING"

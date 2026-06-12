@@ -17,10 +17,13 @@ class Head:
 
 
 class HeadDetector:
+    RAW_CONF_FLOOR = 0.05  # 모델 내부 컷 — 임계 미달 검출도 conf 계측에 노출
+
     def __init__(self, weights_path: str, conf_threshold: float = 0.25) -> None:
+        self.conf_threshold = conf_threshold  # "present" 판정은 호출부에서 적용
         self.model = torch.hub.load("ultralytics/yolov5", "custom",
                                     path=weights_path, trust_repo=True, verbose=False)
-        self.model.conf = conf_threshold
+        self.model.conf = self.RAW_CONF_FLOOR
 
     def detect(self, frame_bgr) -> list[Head]:
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
